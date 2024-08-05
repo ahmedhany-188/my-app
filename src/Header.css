@@ -1,0 +1,11 @@
+
+.headerStyle { 
+  display: flex;
+  justify-content: space-between;
+  height: 1;
+}
+
+.logoStyle {
+    height: 180px;
+    margin-right: 20px;
+}
