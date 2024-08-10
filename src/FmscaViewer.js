@@ -1,9 +1,53 @@
 // src/components/FMSCAViewer.js
-import React from 'react';
-import { useTable, useFilters, usePagination } from 'react-table';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination } from '@material-ui/core';
+import React, { useState, useMemo } from 'react';
+import { useTable, useFilters, useSortBy, usePagination, useGlobalFilter, useColumnOrder } from 'react-table';
+import {
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, TextField, Button, Checkbox, makeStyles, Typography
+} from '@material-ui/core';
+import { Bar } from 'react-chartjs-2';
+import 'chart.js/auto';
+
+// Custom styling
+const useStyles = makeStyles((theme) => ({
+  controlsContainer: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing(2),
+  },
+  searchInput: {
+    width: '70%',
+  },
+  applyButton: {
+    width: '25%',
+  },
+  tableHeader: {
+    backgroundColor: theme.palette.primary.main,
+    color: theme.palette.common.white,
+    textAlign: 'center',
+    fontWeight: 'bold',
+    whiteSpace: 'normal',
+    lineHeight: 1.2,
+    padding: theme.spacing(1),
+  },
+  headerCell: {
+    padding: theme.spacing(2),
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  cell: {
+    padding: theme.spacing(1),
+    textAlign: 'center',
+  },
+  chartContainer: {
+    marginTop: theme.spacing(4),
+  },
+}));
 
 const FMSCAViewer = ({ data, columns }) => {
+  const classes = useStyles();
+  const [order, setOrder] = useState(columns.map(col => col.accessor));
+
   const {
     getTableProps,
     getTableBodyProps,
@@ -13,66 +57,151 @@ const FMSCAViewer = ({ data, columns }) => {
     canPreviousPage,
     canNextPage,
     pageOptions,
-    state: { pageIndex, pageSize },
+    state: { pageIndex, pageSize, globalFilter },
     previousPage,
     nextPage,
     setPageSize,
+    setGlobalFilter,
+    allColumns,
+    setColumnOrder,
+    rows,
   } = useTable(
     {
       columns,
       data,
-      initialState: { pageIndex: 0 },
+      initialState: { pageIndex: 0, columnOrder: order },
     },
     useFilters,
-    usePagination
+    useGlobalFilter,  // For global search
+    useSortBy,        // For sorting
+    usePagination,
+    useColumnOrder    // For customizing column order
   );
 
+  const handleColumnOrderChange = (newOrder) => {
+    setOrder(newOrder);
+    setColumnOrder(newOrder);
+  };
+
+  // Generate bar chart data
+  const barChartData = useMemo(() => {
+    const filteredData = rows.map(row => row.original);
+    const groupedByMonth = filteredData.reduce((acc, item) => {
+      const month = new Date(item.out_of_service_date).toLocaleString('default', { month: 'short', year: 'numeric' });
+      if (acc[month]) {
+        acc[month] += 1;
+      } else {
+        acc[month] = 1;
+      }
+      return acc;
+    }, {});
+
+    const labels = Object.keys(groupedByMonth);
+    const data = Object.values(groupedByMonth);
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Companies Out of Service',
+          data,
+          backgroundColor: 'rgba(75, 192, 192, 0.6)',
+        },
+      ],
+    };
+  }, [rows]);
+
   return (
-    <TableContainer>
-      <Table {...getTableProps()}>
-        <TableHead>
-          {headerGroups.map((headerGroup) => (
-            <TableRow {...headerGroup.getHeaderGroupProps()}>
-              {headerGroup.headers.map((column) => (
-                <TableCell {...column.getHeaderProps()}>
-                  {column.render('Header')}
-                  <div>{column.canFilter ? column.render('Filter') : null}</div>
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableHead>
-        <TableBody {...getTableBodyProps()}>
-          {page.map((row, i) => {
-            prepareRow(row);
-            return (
-              <TableRow {...row.getRowProps()}>
-                {row.cells.map((cell) => (
-                  <TableCell {...cell.getCellProps()}>
-                    {cell.render('Cell')}
+    <div>
+      <div className={classes.controlsContainer}>
+        <TextField
+          className={classes.searchInput}
+          value={globalFilter || ''}
+          onChange={(e) => setGlobalFilter(e.target.value || undefined)}
+          placeholder="Search..."
+          variant="outlined"
+        />
+        <Button
+          onClick={() => handleColumnOrderChange(allColumns.map(col => col.id))}
+          variant="contained"
+          color="primary"
+          className={classes.applyButton}
+        >
+          Apply Column Order
+        </Button>
+      </div>
+
+      <TableContainer>
+        <Table {...getTableProps()}>
+          <TableHead>
+            {headerGroups.map((headerGroup) => (
+              <TableRow {...headerGroup.getHeaderGroupProps()}>
+                {headerGroup.headers.map((column) => (
+                  <TableCell
+                    {...column.getHeaderProps(column.getSortByToggleProps())}
+                    className={classes.tableHeader}
+                  >
+                    <Typography variant="body2" className={classes.headerCell}>
+                      {column.render('Header')}
+                    </Typography>
+                    <span>
+                      {column.isSorted
+                        ? column.isSortedDesc
+                          ? ' 🔽'
+                          : ' 🔼'
+                        : ''}
+                    </span>
+                    <div>{column.canFilter ? column.render('Filter') : null}</div>
                   </TableCell>
                 ))}
               </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-      <TablePagination
-        rowsPerPageOptions={[10, 20, 30]}
-        component="div"
-        count={data.length}
-        rowsPerPage={pageSize}
-        page={pageIndex}
-        onPageChange={(event, newPage) => {
-          if (newPage > pageIndex) {
-            nextPage();
-          } else {
-            previousPage();
-          }
-        }}
-        onRowsPerPageChange={(event) => setPageSize(Number(event.target.value))}
-      />
-    </TableContainer>
+            ))}
+          </TableHead>
+          <TableBody {...getTableBodyProps()}>
+            {page.map((row, i) => {
+              prepareRow(row);
+              return (
+                <TableRow {...row.getRowProps()}>
+                  {row.cells.map((cell) => (
+                    <TableCell {...cell.getCellProps()} className={classes.cell}>
+                      {cell.render('Cell')}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+        <TablePagination
+          rowsPerPageOptions={[10, 20, 30]}
+          component="div"
+          count={data.length}
+          rowsPerPage={pageSize}
+          page={pageIndex}
+          onPageChange={(event, newPage) => {
+            if (newPage > pageIndex) {
+              nextPage();
+            } else {
+              previousPage();
+            }
+          }}
+          onRowsPerPageChange={(event) => setPageSize(Number(event.target.value))}
+        />
+      </TableContainer>
+
+      <div className={classes.chartContainer}>
+        <Bar data={barChartData} />
+      </div>
+
+      <div style={{ marginTop: '20px' }}>
+        <h3>Customize Columns</h3>
+        {allColumns.map(column => (
+          <div key={column.id}>
+            <Checkbox {...column.getToggleHiddenProps()} /> {column.Header}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 };
 
