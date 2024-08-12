@@ -1,5 +1,4 @@
-// src/components/FMSCAViewer.js
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useTable, useFilters, useSortBy, usePagination, useGlobalFilter, useColumnOrder } from 'react-table';
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, TextField, Button, Checkbox, makeStyles, Typography
@@ -41,12 +40,23 @@ const useStyles = makeStyles((theme) => ({
   },
   chartContainer: {
     marginTop: theme.spacing(4),
+    height: '400px', // Set a fixed height for the chart container
+  },
+  editableInput: {
+    width: '60px',
+    textAlign: 'center',
   },
 }));
 
 const FMSCAViewer = ({ data, columns }) => {
   const classes = useStyles();
   const [order, setOrder] = useState(columns.map(col => col.accessor));
+  const [chartData, setChartData] = useState(() => {
+    // Load chart data from localStorage if available
+    const savedData = localStorage.getItem('chartData');
+    return savedData ? JSON.parse(savedData) : { labels: [], datasets: [{ label: 'Companies Out of Service', data: [], backgroundColor: 'rgba(75, 192, 192, 0.6)' }] };
+  });
+  const [orderedColumns, setOrderedColumns] = useState(columns);
 
   const {
     getTableProps,
@@ -111,6 +121,19 @@ const FMSCAViewer = ({ data, columns }) => {
     };
   }, [rows]);
 
+  // Update and save chart data
+  const handleDataChange = (index, value) => {
+    const updatedData = { ...chartData };
+    updatedData.datasets[0].data[index] = Number(value);
+    setChartData(updatedData);
+    localStorage.setItem('chartData', JSON.stringify(updatedData));
+  };
+
+  useEffect(() => {
+    // Sync the chart data with local storage whenever it updates
+    localStorage.setItem('chartData', JSON.stringify(chartData));
+  }, [chartData]);
+
   return (
     <div>
       <div className={classes.controlsContainer}>
@@ -131,26 +154,58 @@ const FMSCAViewer = ({ data, columns }) => {
         </Button>
       </div>
 
+      <div style={{ marginTop: '20px', padding: '20px' }}>
+        <h3 style={{
+          marginRight: '10px',
+          marginBottom: '10px',
+          padding: '15px',
+          backgroundColor: '#f0f0f0',
+          borderRadius: '8px',
+          boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)'
+        }}>Filter Columns:</h3>
+        <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+          {allColumns.map(column => (
+            <div
+              key={column.id}
+              style={{
+                marginRight: '10px',
+                marginBottom: '10px',
+                padding: '15px',
+                backgroundColor: '#f0f0f0',
+                borderRadius: '8px',
+                boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)'
+              }}>
+              <Checkbox {...column.getToggleHiddenProps()} /> {column.Header}
+            </div>
+          ))}
+        </div>
+      </div>
+
       <TableContainer>
         <Table {...getTableProps()}>
           <TableHead>
             {headerGroups.map((headerGroup) => (
               <TableRow {...headerGroup.getHeaderGroupProps()}>
-                {headerGroup.headers.map((column) => (
+                {headerGroup.headers.map((column, index) => (
                   <TableCell
                     {...column.getHeaderProps(column.getSortByToggleProps())}
-                    className={classes.tableHeader}
+                    style={{
+                      height: '80px',
+                      minWidth: '150px',
+                      maxWidth: '150px',
+                      whiteSpace: 'normal', // Allows text to wrap
+                      wordWrap: 'break-word', // Breaks long words
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center', // Center the text within the cell
+                      borderRight: index < headerGroup.headers.length - 1 ? '1px solid #ccc' : 'none', // Vertical line
+                    }}
                   >
-                    <Typography variant="body2" className={classes.headerCell}>
+                    <Typography variant="body2">
                       {column.render('Header')}
                     </Typography>
-                    <span>
-                      {column.isSorted
-                        ? column.isSortedDesc
-                          ? ' 🔽'
-                          : ' 🔼'
-                        : ''}
-                    </span>
                     <div>{column.canFilter ? column.render('Filter') : null}</div>
                   </TableCell>
                 ))}
@@ -162,8 +217,23 @@ const FMSCAViewer = ({ data, columns }) => {
               prepareRow(row);
               return (
                 <TableRow {...row.getRowProps()}>
-                  {row.cells.map((cell) => (
-                    <TableCell {...cell.getCellProps()} className={classes.cell}>
+                  {row.cells.map((cell, index) => (
+                    <TableCell
+                      {...cell.getCellProps()}
+                      style={{
+                        height: '50px',
+                        minWidth: '150px',
+                        maxWidth: '150px',
+                        whiteSpace: 'normal', // Allows text to wrap
+                        wordWrap: 'break-word', // Breaks long words
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center', // Center the text within the cell
+                        borderRight: index < row.cells.length - 1 ? '1px solid #ccc' : 'none', // Vertical line
+                      }}
+                    >
                       {cell.render('Cell')}
                     </TableCell>
                   ))}
@@ -190,16 +260,42 @@ const FMSCAViewer = ({ data, columns }) => {
       </TableContainer>
 
       <div className={classes.chartContainer}>
-        <Bar data={barChartData} />
-      </div>
-
-      <div style={{ marginTop: '20px' }}>
-        <h3>Customize Columns</h3>
-        {allColumns.map(column => (
-          <div key={column.id}>
-            <Checkbox {...column.getToggleHiddenProps()} /> {column.Header}
-          </div>
-        ))}
+        <Bar
+          data={barChartData}
+          options={{
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: {
+                display: true,
+                position: 'top',
+              },
+              tooltip: {
+                callbacks: {
+                  label: function (tooltipItem) {
+                    return `${barChartData.labels[tooltipItem.dataIndex]}: ${tooltipItem.raw}`;
+                  },
+                },
+              },
+            },
+          }}
+        />
+        <div style={{ marginTop: '20px' }}>
+          <h3>Edit Chart Data</h3>
+          {barChartData.labels.map((label, index) => (
+            <div key={label} style={{ marginBottom: '10px' }}>
+              <label>
+                {label}: 
+                <input
+                  type="number"
+                  className={classes.editableInput}
+                  value={chartData.datasets[0].data[index]}
+                  onChange={(e) => handleDataChange(index, e.target.value)}
+                />
+              </label>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
